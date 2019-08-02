@@ -74,6 +74,13 @@ module ZohoHub
         new(id: id).update(params)
       end
 
+      def upsert(params)
+        params = [params] unless params.is_a?(Array)
+        data = params.map { |record_data| new(record_data).to_params }
+        body = post(File.join(self.request_path, 'upsert'), data: data)
+        build_response(body)
+      end
+
       def blueprint_transition(id, transition_id, data = {})
         new(id: id).blueprint_transition(transition_id, data)
       end
