@@ -162,7 +162,7 @@ module ZohoHub
       attributes.each do |attr|
         key = attr_to_zoho_key(attr)
 
-        params[key] = send(attr)
+        params[key] = send(attr) if send(attr).present?
       end
 
       params
