@@ -14,21 +14,35 @@ ActiveRecord, to do CRUD operations.
 
 ## Table of Contents
 
-* [Installation](#installation)
-* [Setup](#setup-process)
-  1. [Register your application](#1-register-your-application)
-  2. [Configure ZohoHub with your credentials](#2-configure-zohohub-with-your-credentials)
-  3. [Authorization request](#3-authorization-request)
-  4. [Access token](#4-access-token)
-  5. [Refresh token](#5-refresh-token)
-  6. [BasicZohoHub flow](#6-basic-zohohub-flow)
-  7. [BaseRecord and record classes](#7-baserecord-and-record-classes)
-* [Tips and suggestions](#tips-and-suggestions)
-* [Examples](#examples)
-  1. [Setup auth token and request CurrentUser](#setup-auth-token-and-request-currentuser)
-* [Development](#development)
-* [Contributing](#contributing)
-* [License](#license)
+- [ZohoHub](#zohohub)
+  - [Table of Contents](#table-of-contents)
+  - [Installation](#installation)
+  - [Setup process](#setup-process)
+    - [1. Register your application](#1-register-your-application)
+      - [1.1 Zoho Accounts URL](#11-zoho-accounts-url)
+      - [1.2 Authorized Redirect URI](#12-authorized-redirect-uri)
+    - [2. Configure ZohoHub with your credentials](#2-configure-zohohub-with-your-credentials)
+    - [3. Authorization request](#3-authorization-request)
+      - [3.1 Redirection based authentication](#31-redirection-based-authentication)
+      - [3.2 Self-Client Authorization](#32-self-client-authorization)
+      - [3.3 More on scopes](#33-more-on-scopes)
+      - [3.4 Offline access](#34-offline-access)
+    - [4. Access token](#4-access-token)
+    - [5. Refresh token](#5-refresh-token)
+    - [6. Basic ZohoHub flow](#6-basic-zohohub-flow)
+    - [7. BaseRecord and record classes](#7-baserecord-and-record-classes)
+      - [7.1 Reflection](#71-reflection)
+      - [7.2 Subclassing BaseRecord](#72-subclassing-baserecord)
+  - [8 Notifications](#8-notifications)
+    - [8.1 Enable notifications](#81-enable-notifications)
+    - [8.2 List notifications](#82-list-notifications)
+    - [8.3 Caveats](#83-caveats)
+  - [Tips and suggestions](#tips-and-suggestions)
+  - [Examples](#examples)
+    - [Setup auth token and request CurrentUser](#setup-auth-token-and-request-currentuser)
+  - [Development](#development)
+  - [Contributing](#contributing)
+  - [License](#license)
 
 ## Installation
 
@@ -154,7 +168,7 @@ ZohoCRM.modules.all
 To get the URL for a different scope you can provide a `scope` argument:
 
 ```ruby
-ZohoHub::Auth.auth_url(scope: ['ZohoCRM.modules.custom.all', 'ZohoCRM.modules.all'])
+ZohoHub::Auth.auth_url(scopes: ['ZohoCRM.modules.custom.all', 'ZohoCRM.modules.all'])
 # => "https://accounts.zoho.eu/oauth/v2/auth?access_type=offline&client_id=&redirect_uri=&response_type=code&scope=ZohoCRM.modules.custom.all,ZohoCRM.modules.all"
 ```
 
@@ -198,7 +212,9 @@ To use an **access token** with ZohoHub, pass it to the `ZohoHub.setup_connectio
 
 ### 5. Refresh token
 
-TODO
+This gem automatically refresh the access token.
+
+If you want automatic refresh, use the `refresh_token` argument as in the next chapter.
 
 ---
 
@@ -210,7 +226,8 @@ token**, setup a ZohoHub connection:
 ```ruby
 ZohoHub.setup_connection access_token: 'ACCESS_TOKEN',
                          expires_in: 'EXPIRES_IN_SEC',
-                         api_domain: 'API_DOMAIN'
+                         api_domain: 'API_DOMAIN',
+                         refresh_token: 'REFRESH_TOKEN'
 ```
 
 Now you can issue requests to Zoho's API with the Connection object, e.g.:
@@ -256,7 +273,7 @@ Specify this module's fields as attributes:
 # lead.rb
 
 class Lead < ZohoHub::BaseRecord
-  attributes: :id, :first_name, :last_name, :phone, :email, :source, # etc.
+  attributes :id, :first_name, :last_name, :phone, :email, :source, # etc.
 end
 ```
 
@@ -283,7 +300,100 @@ lead = Lead.new(
 
 # Creates the new lead
 lead.save
+
+# Or in one step:
+lead = Lead.create(first_name: 'First name', ...)
 ```
+
+Updating records:
+
+```ruby
+Lead.update(id: lead.id, first_name: "...", last_name: "...")
+
+# Or
+lead.update(first_name: "...", last_name: "...")
+
+# Or update up to 100 records in one call:
+leads = [{ id: id1, phone: "123" }, { id: id2, first_name: "..." }]
+Lead.update_all(leads)
+```
+
+Blueprint transition:
+
+```ruby
+Lead.blueprint_transition(lead.id, transition_id)
+
+# Or
+lead.blueprint_transition(transition_id)
+```
+
+Adding notes:
+
+```ruby
+Lead.add_note(id: lead.id, title: 'Note title', content: 'Note content')
+```
+
+Related records:
+
+```ruby
+Product.all_related(parent_module: 'Lead', parent_id: lead.id)
+Product.add_related(
+  parent_module: 'Lead',
+  parent_id: lead.id,
+  related_id: product.id
+)
+Product.remove_related(
+  parent_module: 'Lead',
+  parent_id: lead.id,
+  related_id: product.id
+)
+Product.update_related(...)
+```
+
+Attachments (`ZohoHub::Attachment` is defined in the gem):
+
+```ruby
+Lead.related_attachments(parent_id: lead.id)
+# -> Array of Attachments
+
+attachment = Lead.download_attachment(parent_id: lead.id, attachment_id:attachment.id)
+# -> Attachment (attachment.file contains the file as a Tempfile)
+
+#NB: Lead.upload_attachment not implemented yet
+```
+
+## 8 Notifications
+Zoho allows you to receive a notification when a record of a module changes. Supported operation types are create, delete, edit, all.
+
+### 8.1 Enable notifications
+In order to receive notifications, you have to enable them first.
+```ruby
+# Enable notifications for a given channel:
+notification_url = 'https://example.org/api/notifications' # Zoho will send notifications by POST to this url
+token = '123abc' # Zoho will send this token back to you, so you can ensure that the notification is from Zoho
+channel_id = 1 # Choose a channel to handle the response
+events = %w[Leads.create Deals.edit Contacts.delete Sales_Orders.all] # Which events to receive notifications for
+channel_expiry = (DateTime.now + 1.day).iso8601 # choose a date when the channel should expire. 24h is the maximum, default is one hour
+
+ZohoHub::Notifications.enable(notification_url, channel_id, events, channel_expiry, token)
+```
+
+After enabling notifications, Zoho will execute a POST request to the provided notification_url every time the requested event occurs.
+
+For a list of an in-depth description of the response, check the [Zoho documentation](https://www.zoho.com/crm/developer/docs/api/notifications/overview.html)
+
+### 8.2 List notifications
+You can also retrieve all notifications that are currently enabled and that you are receiving uppdates for.
+
+```ruby
+# Get all enabled notifications
+ZohoHub::Notifications.all
+```
+
+### 8.3 Caveats
+
+* Zoho does not notify you when records are merged.
+* Since Zoho does not tell you what changed, you will have to request the record by yourself. Due to this you can miss changes, when they occur quickly after another. This is especially important for status changes, as you might miss state changes.
 
 ## Tips and suggestions
 

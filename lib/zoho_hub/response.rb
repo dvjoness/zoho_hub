@@ -14,6 +14,10 @@ module ZohoHub
       error_code?('INVALID_TOKEN')
     end
 
+    def internal_error?
+      error_code?('INTERNAL_ERROR')
+    end
+
     def authentication_failure?
       error_code?('AUTHENTICATION_FAILURE')
     end
@@ -39,7 +43,7 @@ module ZohoHub
     end
 
     def data
-      data = @params[:data] if @params.dig(:data)
+      data = @params[:data] if @params[:data]
       data || @params
     end
 
@@ -59,12 +63,13 @@ module ZohoHub
       msg
     end
 
-    # error response examples:
-    # {"data":[{"code":"INVALID_DATA","details":{},"message":"the id given seems to be invalid","status":"error"}]}
+    # Error response examples:
+    # {"data":[{"code":"INVALID_DATA","details":{},"message":"the id given...","status":"error"}]}
     # {:code=>"INVALID_TOKEN", :details=>{}, :message=>"invalid oauth token", :status=>"error"}
     def error_code?(code)
       if data.is_a?(Array)
         return false if data.size > 1
+
         return data.first[:code] == code
       end
 

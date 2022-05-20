@@ -31,7 +31,7 @@ module ZohoHub
 
     BASE_PATH = '/crm/v2/'
 
-    def initialize(access_token:, api_domain: nil, expires_in: 3600, refresh_token: nil)
+    def initialize(access_token: nil, api_domain: nil, expires_in: 3600, refresh_token: nil)
       @access_token = access_token
       @expires_in = expires_in
       @api_domain = api_domain || self.class.infer_api_domain
@@ -88,7 +88,7 @@ module ZohoHub
       response = Response.new(http_response.body)
 
       # Try to refresh the token and try again
-      if response.invalid_token? && refresh_token?
+      if (response.invalid_token? || response.authentication_failure?) && refresh_token?
         log "Refreshing outdated token... #{@access_token}"
         params = ZohoHub::Auth.refresh_token(@refresh_token)
 
@@ -116,6 +116,7 @@ module ZohoHub
     def adapter
       Faraday.new(url: base_url) do |conn|
         conn.headers = authorization_header if access_token?
+        conn.use FaradayMiddleware::EncodeJson
         conn.use FaradayMiddleware::ParseJson
         conn.response :json, parser_options: { symbolize_names: true }
         conn.response :logger if ZohoHub.configuration.debug?
